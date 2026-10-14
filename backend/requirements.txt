@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+asyncpg
+alembic
+httpx
+python-multipart
+python-docx
+pypdf
+pytest
+pytest-asyncio
+pytest-cov
+ruff
