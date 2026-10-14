@@ -1,0 +1,61 @@
+name: namotai
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - namotai
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY}
+      CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL}
+      WHISPER_MODEL: ${WHISPER_MODEL}
+      LLM_MODEL: ${LLM_MODEL}
+    volumes:
+      - media_data:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+    networks:
+      - namotai
+
+  bot:
+    build:
+      context: ../bot
+      dockerfile: ../bot/Dockerfile
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      API_URL: http://api:8000
+    depends_on:
+      - api
+    networks:
+      - namotai
+
+volumes:
+  postgres_data:
+  media_data:
+
+networks:
+  namotai:
+    driver: bridge

@@ -1,0 +1,5 @@
+aiogram
+httpx
+pydantic-settings
+ruff
+pytest
