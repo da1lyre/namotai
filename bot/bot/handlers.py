@@ -1,11 +1,11 @@
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
-from bot.states import GenerateFlow
-from bot.keyboards import difficulty_keyboard, count_keyboard
 from bot.api_client import generate_from_file, generate_from_text
+from bot.keyboards import count_keyboard, difficulty_keyboard
+from bot.states import GenerateFlow
 
 router = Router()
 
@@ -14,8 +14,7 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
-        "Привет! Я Namotai.\n\n"
-        "Отправь мне видео или текст — я сделаю конспект и вопросы."
+        "Привет! Я Namotai.\n\nОтправь мне видео или текст — я сделаю конспект и вопросы."
     )
     await state.set_state(GenerateFlow.waiting_for_source)
 
@@ -97,5 +96,5 @@ async def send_result(message: Message, result: dict) -> None:
         text += f"   ✅ Ответ: {q['answer']}\n\n"
 
     # Telegram limit — 4096 символов
-    for chunk in [text[i:i + 4000] for i in range(0, len(text), 4000)]:
+    for chunk in [text[i : i + 4000] for i in range(0, len(text), 4000)]:
         await message.answer(chunk)
