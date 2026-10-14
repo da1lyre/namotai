@@ -24,12 +24,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
-      MEDIA_DIR: ${MEDIA_DIR}
-      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB}
-      MAX_VIDEO_DURATION_SEC: ${MAX_VIDEO_DURATION_SEC}
-      RATE_LIMIT_PER_DAY: ${RATE_LIMIT_PER_DAY}
       CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY}
       CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL}
       WHISPER_MODEL: ${WHISPER_MODEL}
@@ -44,13 +39,14 @@ services:
     networks:
       - namotai
 
-  nginx:
-    image: nginx:alpine
+  bot:
+    build:
+      context: ../bot
+      dockerfile: ../bot/Dockerfile
     restart: unless-stopped
-    ports:
-      - "${APP_PORT}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      API_URL: http://api:8000
     depends_on:
       - api
     networks:
