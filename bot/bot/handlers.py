@@ -1,21 +1,22 @@
 import asyncio
 import logging
+from pathlib import Path
 
-from aiogram import F, Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message, CallbackQuery
 
-from bot.api_client import generate_from_file, generate_from_text
+from bot.states import GenerateFlow
 from bot.keyboards import (
+    main_menu,
+    difficulty_keyboard,
+    count_keyboard,
+    confirm_keyboard,
     after_result_keyboard,
     cancel_keyboard,
-    confirm_keyboard,
-    count_keyboard,
-    difficulty_keyboard,
-    main_menu,
 )
-from bot.states import GenerateFlow
+from bot.api_client import generate_from_file, generate_from_text
 from bot.utils import (
     DIFFICULTY_LABELS,
     format_result,
@@ -26,11 +27,14 @@ from bot.utils import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+TEXT_EXT = {".txt", ".docx", ".pdf"}
+
 
 WELCOME_TEXT = (
-    "👋 Привет! Я Namotai — помощник для активного обучения.\n\n"
+    "👋 <b>Привет! Я Namotai</b> — помощник для активного обучения.\n\n"
     "Превращаю видео и текст в конспект и вопросы для закрепления материала.\n\n"
-    "Что можно отправить:\n"
+    "<b>Что можно отправить:</b>\n"
     "📹 Видео — mp4, mov, mkv, webm\n"
     "📄 Документ — txt, docx, pdf\n"
     "✍️ Или просто текст сообщением\n\n"
@@ -39,16 +43,16 @@ WELCOME_TEXT = (
 
 
 HELP_TEXT = (
-    "ℹ️ Как пользоваться\n\n"
+    "ℹ️ <b>Как пользоваться</b>\n\n"
     "1. Отправь видео, документ или текст\n"
     "2. Выбери сложность вопросов\n"
     "3. Выбери количество вопросов (5–10)\n"
     "4. Подтверди запуск\n"
     "5. Дождись результата\n\n"
-    "Что получишь:\n"
+    "<b>Что получишь:</b>\n"
     "• Краткий конспект материала\n"
     "• Вопросы с ответами для самопроверки\n\n"
-    "Команды:\n"
+    "<b>Команды:</b>\n"
     "/start — начать заново\n"
     "/help — эта справка\n"
     "/cancel — отменить текущее действие"
@@ -66,7 +70,6 @@ UNKNOWN_TEXT = (
 
 
 # ─── Команды ───────────────────────────────────────────────
-
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
@@ -113,7 +116,6 @@ async def restart(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Кнопки-подсказки ──────────────────────────────────────
 
-
 @router.message(F.text == "📹 Загрузить видео")
 async def prompt_video(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_source)
@@ -140,7 +142,6 @@ async def prompt_help(message: Message) -> None:
 
 # ─── Приём материала ───────────────────────────────────────
 
-
 @router.message(GenerateFlow.waiting_for_source, F.video)
 @router.message(GenerateFlow.waiting_for_source, F.document)
 @router.message(GenerateFlow.waiting_for_source, F.audio)
@@ -162,12 +163,12 @@ async def handle_file(message: Message, state: FSMContext) -> None:
         file_id=file_id,
         filename=filename,
         size_mb=size_mb,
-        source_type="video",
+        source_type="file",
     )
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
-        f"📎 Получил: {filename} ({size_mb:.1f} МБ)\n\n"
-        "Что дальше:\n"
+        f"📎 Получил: <b>{filename}</b> ({size_mb:.1f} МБ)\n\n"
+        "<b>Что дальше:</b>\n"
         "1. Выбери сложность вопросов\n"
         "2. Выбери количество\n"
         "3. Подтверди запуск\n\n"
@@ -189,11 +190,11 @@ async def handle_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    await state.update_data(text=text, source_type="text")
+    await state.update_data(text=text, source_type="text_input")
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
         f"📝 Получил текст ({len(text)} символов)\n\n"
-        "Что дальше:\n"
+        "<b>Что дальше:</b>\n"
         "1. Выбери сложность вопросов\n"
         "2. Выбери количество\n"
         "3. Подтверди запуск\n\n"
@@ -209,14 +210,14 @@ async def unknown_message(message: Message) -> None:
 
 # ─── Выбор параметров ──────────────────────────────────────
 
-
 @router.callback_query(GenerateFlow.waiting_for_difficulty, F.data.startswith("diff:"))
 async def handle_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     difficulty = callback.data.split(":")[1]
     await state.update_data(difficulty=difficulty)
     await state.set_state(GenerateFlow.waiting_for_count)
     await callback.message.edit_text(
-        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\nСколько вопросов сгенерировать?",
+        f"Сложность: <b>{DIFFICULTY_LABELS[difficulty]}</b>\n\n"
+        "Сколько вопросов сгенерировать?",
         reply_markup=count_keyboard(),
     )
     await callback.answer()
@@ -237,23 +238,23 @@ async def handle_count(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 def _confirmation_text(data: dict) -> str:
-    source_label = "📹 Видео" if data["source_type"] == "video" else "📄 Текст"
-    if data["source_type"] == "video":
-        source_info = f"{source_label}: {data['filename']} ({data['size_mb']:.1f} МБ)"
+    if data["source_type"] == "text_input":
+        source_info = f"📄 Текст: {len(data['text'])} символов"
     else:
-        source_info = f"{source_label}: {len(data['text'])} символов"
+        source_info = (
+            f"📎 Файл: <b>{data['filename']}</b> ({data['size_mb']:.1f} МБ)"
+        )
 
     return (
-        "📋 Проверь перед запуском\n\n"
+        "📋 <b>Проверь перед запуском</b>\n\n"
         f"{source_info}\n"
-        f"🎯 Сложность: {DIFFICULTY_LABELS[data['difficulty']]}\n"
-        f"❓ Вопросов: {data['question_count']}\n\n"
+        f"🎯 Сложность: <b>{DIFFICULTY_LABELS[data['difficulty']]}</b>\n"
+        f"❓ Вопросов: <b>{data['question_count']}</b>\n\n"
         "Всё верно?"
     )
 
 
 # ─── Редактирование параметров ─────────────────────────────
-
 
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "edit:difficulty")
 async def edit_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
@@ -277,21 +278,27 @@ async def edit_count(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Запуск обработки ──────────────────────────────────────
 
-
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "confirm")
 async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
     data = await state.get_data()
     await state.set_state(GenerateFlow.processing)
 
-    progress_msg = await callback.message.edit_text(
-        "⏳ Обрабатываю материал...\n\n▓░░░░░░░░░ 10%\nЧитаю материал...",
-    )
-    await callback.answer()
+    try:
+        progress_msg = await callback.message.edit_text(
+            "⏳ <b>Обрабатываю материал...</b>\n\n"
+            "▓░░░░░░░░░ 10%\n"
+            "Читаю материал...",
+        )
+    except Exception:
+        progress_msg = callback.message
 
-    progress_task = asyncio.create_task(_update_progress(progress_msg, callback.bot))
+    progress_task = asyncio.create_task(
+        _update_progress(progress_msg, callback.bot)
+    )
 
     try:
-        if data["source_type"] == "text":
+        if data["source_type"] == "text_input":
             result = await generate_from_text(
                 text=data["text"],
                 difficulty=data["difficulty"],
@@ -300,11 +307,17 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
         else:
             file = await callback.bot.get_file(data["file_id"])
             file_bytes = await callback.bot.download_file(file.file_path)
+
+            filename = data["filename"]
+            ext = Path(filename).suffix.lower()
+            source_type = "video" if ext in VIDEO_EXT else "text"
+
             result = await generate_from_file(
                 file_bytes=file_bytes.read(),
-                filename=data["filename"],
+                filename=filename,
                 difficulty=data["difficulty"],
                 question_count=data["question_count"],
+                source_type=source_type,
             )
 
         progress_task.cancel()
@@ -334,19 +347,19 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _update_progress(message: Message, bot) -> None:
-    """Имитация прогресса — обновляем сообщение каждые несколько секунд."""
     stages = [
-        (5, "▓░░░░░░░░░ 10%\nЧитаю материал..."),
-        (15, "▓▓▓░░░░░░░ 30%\nРазбираю содержимое..."),
-        (30, "▓▓▓▓▓░░░░░ 50%\nГотовлю конспект..."),
-        (50, "▓▓▓▓▓▓▓░░░ 70%\nГенерирую вопросы..."),
-        (70, "▓▓▓▓▓▓▓▓▓░ 90%\nФинальная проверка..."),
+        (10, "▓░░░░░░░░░ 10%\nЧитаю материал..."),
+        (30, "▓▓▓░░░░░░░ 30%\nРазбираю содержимое..."),
+        (60, "▓▓▓▓▓░░░░░ 50%\nГотовлю конспект..."),
+        (90, "▓▓▓▓▓▓▓░░░ 70%\nГенерирую вопросы..."),
     ]
     try:
         for delay, text in stages:
             await asyncio.sleep(delay)
             try:
-                await message.edit_text(f"⏳ Обрабатываю материал...\n\n{text}")
+                await message.edit_text(
+                    f"⏳ <b>Обрабатываю материал...</b>\n\n{text}"
+                )
             except Exception:
                 pass
     except asyncio.CancelledError:
@@ -354,7 +367,6 @@ async def _update_progress(message: Message, bot) -> None:
 
 
 # ─── Отправка результата ───────────────────────────────────
-
 
 async def send_result(message: Message, result: dict) -> None:
     summary = result.get("summary", "")
@@ -367,11 +379,11 @@ async def send_result(message: Message, result: dict) -> None:
         )
         return
 
-    header = f"✅ Готово! Конспект и {len(questions)} вопросов.\n"
+    header = f"✅ <b>Готово!</b> Конспект и {len(questions)} вопросов.\n"
     await message.answer(header)
 
     if summary:
-        await message.answer(f"📝 Конспект\n\n{summary}")
+        await message.answer(f"📝 <b>Конспект</b>\n\n{summary}")
 
     if questions:
         for chunk in split_message(format_result("", questions, include_summary=False)):

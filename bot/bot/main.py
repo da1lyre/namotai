@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import settings
@@ -15,11 +14,7 @@ async def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    if settings.proxy_url:
-        session = AiohttpSession(proxy=settings.proxy_url)
-        bot = Bot(token=settings.bot_token, session=session)
-    else:
-        bot = Bot(token=settings.bot_token)
+    bot = Bot(token=settings.bot_token)
 
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)

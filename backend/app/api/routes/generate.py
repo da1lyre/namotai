@@ -19,7 +19,9 @@ from app.core.limits import (
 from app.db.models.result import Result
 from app.db.session import get_db
 from app.schemas.generate import GenerateResponse
-from app.services.audio import get_duration
+from app.services.audio import extract_audio, get_duration
+from app.services.parser import parse_document
+from app.services.transcriber import calculate_whisper_cost, transcribe_audio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,7 +49,7 @@ async def generate(
     if source_type == "video" and not file:
         raise HTTPException(422, "Для video нужен файл")
     if source_type == "text" and not text and not file:
-        raise HTTPException(422, "Для text нужен текст или файл")
+        raise HTTPException(422, "Для text */нужен текст или файл")
 
     task_id = uuid4()
     task_dir = MEDIA_ROOT / str(task_id)
@@ -81,6 +83,19 @@ async def generate(
                 raise ValidationError(f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов")
             audio_duration = int(duration)
 
+            # Извлечь аудио
+            audio_path = task_dir / "audio.wav"
+            await extract_audio(file_path, audio_path)
+
+            # Транскрибировать
+            logger.info("Task %s: транскрибирую аудио...", task_id)
+            transcript = await transcribe_audio(audio_path)
+            logger.info(
+                "Task %s: транскрипт готов, %d сегментов",
+                task_id,
+                len(transcript["segments"]),
+            )
+        # ─── Текст ──────────────────────────────────────────
         # ─── Текст ──────────────────────────────────────────
         elif source_type == "text":
             if text:
@@ -92,13 +107,26 @@ async def generate(
                         f"Формат {ext} не поддерживается. "
                         f"Допустимо: {', '.join(sorted(ALLOWED_TEXT_EXT))}"
                     )
+
+                # Сохранить файл
                 content = await file.read()
                 if len(content) > MAX_FILE_SIZE_BYTES:
                     raise ValidationError(
                         f"Файл больше {MAX_FILE_SIZE_MB} МБ",
                         status_code=413,
                     )
-                source_text = content.decode("utf-8", errors="ignore").strip()
+
+                file_path = task_dir / f"source{ext}"
+                file_path.write_bytes(content)
+
+                # Парсить
+                logger.info("Task %s: парсю документ %s", task_id, ext)
+                source_text = parse_document(file_path)
+                logger.info(
+                    "Task %s: текст распарсен, %d символов",
+                    task_id,
+                    len(source_text),
+                )
 
             if not source_text:
                 raise ValidationError("Пустой текст")
@@ -115,8 +143,10 @@ async def generate(
             question_count=question_count,
             summary="TODO: здесь будет конспект",
             questions=[],
+            transcript=transcript if source_type == "video" else None,
             source_text=source_text,
             audio_duration_sec=audio_duration,
+            cost_total=calculate_whisper_cost(audio_duration) if audio_duration else None,
         )
         db.add(result)
         await db.commit()
