@@ -8,11 +8,7 @@ DIFFICULTY_LABELS = {
 
 
 def escape_html(text: str) -> str:
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def humanize_error(error: Exception) -> str:

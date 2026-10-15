@@ -1,15 +1,14 @@
+import os
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
-
-import os
-
-os.environ.setdefault("MEDIA_DIR", "/tmp/namotai-media")
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.session import get_db
-from app.main import app
+os.environ.setdefault("MEDIA_DIR", "/tmp/namotai-media")
+
+from app.db.session import get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 @pytest.fixture
 def mock_db() -> AsyncMock:

@@ -67,6 +67,7 @@ UNKNOWN_TEXT = (
 
 # ─── Команды ───────────────────────────────────────────────
 
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -112,6 +113,7 @@ async def restart(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Кнопки-подсказки ──────────────────────────────────────
 
+
 @router.message(F.text == "📹 Загрузить видео")
 async def prompt_video(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_source)
@@ -137,6 +139,7 @@ async def prompt_help(message: Message) -> None:
 
 
 # ─── Приём материала ───────────────────────────────────────
+
 
 @router.message(GenerateFlow.waiting_for_source, F.video)
 @router.message(GenerateFlow.waiting_for_source, F.document)
@@ -206,14 +209,14 @@ async def unknown_message(message: Message) -> None:
 
 # ─── Выбор параметров ──────────────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_difficulty, F.data.startswith("diff:"))
 async def handle_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     difficulty = callback.data.split(":")[1]
     await state.update_data(difficulty=difficulty)
     await state.set_state(GenerateFlow.waiting_for_count)
     await callback.message.edit_text(
-        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\n"
-        "Сколько вопросов сгенерировать?",
+        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\nСколько вопросов сгенерировать?",
         reply_markup=count_keyboard(),
     )
     await callback.answer()
@@ -251,6 +254,7 @@ def _confirmation_text(data: dict) -> str:
 
 # ─── Редактирование параметров ─────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "edit:difficulty")
 async def edit_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_difficulty)
@@ -273,21 +277,18 @@ async def edit_count(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Запуск обработки ──────────────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "confirm")
 async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     await state.set_state(GenerateFlow.processing)
 
     progress_msg = await callback.message.edit_text(
-        "⏳ Обрабатываю материал...\n\n"
-        "▓░░░░░░░░░ 10%\n"
-        "Читаю материал...",
+        "⏳ Обрабатываю материал...\n\n▓░░░░░░░░░ 10%\nЧитаю материал...",
     )
     await callback.answer()
 
-    progress_task = asyncio.create_task(
-        _update_progress(progress_msg, callback.bot)
-    )
+    progress_task = asyncio.create_task(_update_progress(progress_msg, callback.bot))
 
     try:
         if data["source_type"] == "text":
@@ -335,7 +336,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 async def _update_progress(message: Message, bot) -> None:
     """Имитация прогресса — обновляем сообщение каждые несколько секунд."""
     stages = [
-        (5,  "▓░░░░░░░░░ 10%\nЧитаю материал..."),
+        (5, "▓░░░░░░░░░ 10%\nЧитаю материал..."),
         (15, "▓▓▓░░░░░░░ 30%\nРазбираю содержимое..."),
         (30, "▓▓▓▓▓░░░░░ 50%\nГотовлю конспект..."),
         (50, "▓▓▓▓▓▓▓░░░ 70%\nГенерирую вопросы..."),
@@ -353,6 +354,7 @@ async def _update_progress(message: Message, bot) -> None:
 
 
 # ─── Отправка результата ───────────────────────────────────
+
 
 async def send_result(message: Message, result: dict) -> None:
     summary = result.get("summary", "")
