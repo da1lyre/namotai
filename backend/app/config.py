@@ -1,7 +1,17 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ENV_PATH = Path(__file__).resolve().parent.parent.parent / "infra" / ".env"
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=ENV_PATH,
+        case_sensitive=False,
+        extra="ignore",
+    )
+
     # App
     app_env: str = "dev"
 
@@ -17,14 +27,10 @@ class Settings(BaseSettings):
     rate_limit_per_day: int = 5
 
     # Cloud.ru
-    cloud_ru_api_key: str
-    cloud_ru_base_url: str
-    whisper_model: str
-    llm_model: str
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    cloud_ru_api_key: str = ""
+    cloud_ru_base_url: str = ""
+    whisper_model: str = ""
+    llm_model: str = ""
 
 
 settings = Settings()

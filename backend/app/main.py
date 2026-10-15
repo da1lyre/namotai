@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api.routes import generate
 from app.db.session import engine
 
-app = FastAPI(title="Namotai", version="0.1.0")
+app = FastAPI(title="Namotai API", version="0.1.0")
+
+app.include_router(generate.router)
 
 
 @app.get("/health")
