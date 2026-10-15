@@ -30,14 +30,16 @@ services:
       CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY}
       CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL}
       WHISPER_MODEL: ${WHISPER_MODEL}
-      LLM_MODEL: ${LLM_MODEL}
+      SELECTEL_API_KEY: ${SELECTEL_API_KEY}
+      SELECTEL_BASE_URL: ${SELECTEL_BASE_URL}
+      SELECTEL_LLM_MODEL: ${SELECTEL_LLM_MODEL}
     volumes:
       - media_data:/data/media
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8000:8000"
+    expose:
+      - "8000"
     networks:
       - namotai
 

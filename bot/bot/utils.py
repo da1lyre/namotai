@@ -1,18 +1,13 @@
 MAX_MESSAGE_LENGTH = 4000
 
 DIFFICULTY_LABELS = {
-    "easy": "🟢 Лёгкая",
-    "medium": "🟡 Средняя",
-    "hard": "🔴 Сложная",
+    "easy": "Лёгкая",
+    "medium": "Средняя",
+    "hard": "Сложная",
 }
 
 
-def escape_html(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
 def humanize_error(error: Exception) -> str:
-    """Превращает техническую ошибку в человеческое сообщение."""
     msg = str(error).lower()
 
     if "413" in msg or "больше" in msg or "too large" in msg:
@@ -29,47 +24,46 @@ def humanize_error(error: Exception) -> str:
         )
 
     if "длиннее" in msg or "2 часов" in msg or "7200" in msg:
-        return "😔 Видео слишком длинное. Максимум — 2 часа.\n\nПопробуй разбить его на части."
+        return "😔 Видео слишком длинное. Максимум — 2 часа."
 
     if "короткий" in msg or "100 символов" in msg:
         return "😔 Текст слишком короткий. Нужно минимум 100 символов."
 
     if "connect" in msg or "timeout" in msg or "network" in msg:
-        return "😔 Не удалось связаться с сервером.\n\nПопробуй ещё раз через минуту."
+        return "😔 Не удалось связаться с сервером. Попробуй ещё раз."
 
-    return "😔 Что-то пошло не так при обработке.\n\nПопробуй ещё раз или отправь другой материал."
+    if "json" in msg:
+        return "😔 Модель вернула некорректный ответ. Попробуй ещё раз."
 
-
-def format_result(
-    summary: str,
-    questions: list[dict],
-    include_summary: bool = True,
-) -> str:
-    parts: list[str] = []
-
-    if include_summary and summary:
-        parts.append(f"📝 <b>Конспект</b>\n\n{escape_html(summary)}\n")
-
-    if questions:
-        parts.append("❓ <b>Вопросы</b>\n")
-        for i, q in enumerate(questions, 1):
-            parts.append(_format_question(i, q))
-
-    return "\n".join(parts)
+    return "😔 Что-то пошло не так при обработке."
 
 
-def _format_question(index: int, q: dict) -> str:
-    lines = [f"\n<b>{index}. {escape_html(q.get('question', ''))}</b>"]
+def format_summary(summary: str) -> str:
+    return f"📝 Конспект\n\n{summary}"
 
-    options = q.get("options") or []
-    for j, opt in enumerate(options):
-        letter = chr(ord("A") + j)
-        lines.append(f"   {letter}) {escape_html(str(opt))}")
 
-    answer = q.get("answer")
-    if isinstance(answer, list):
-        answer = ", ".join(str(a) for a in answer)
-    lines.append(f"\n   ✅ <i>Ответ: {escape_html(str(answer))}</i>")
+def format_questions_only(questions: list[dict]) -> str:
+    """Только вопросы, без ответов."""
+    lines = ["❓ Вопросы\n"]
+    for i, q in enumerate(questions, 1):
+        lines.append(f"\n{i}. {q.get('question', '')}")
+
+        options = q.get("options") or []
+        for j, opt in enumerate(options):
+            letter = chr(ord("A") + j)
+            lines.append(f"   {letter}) {opt}")
+
+    return "\n".join(lines)
+
+
+def format_answers_only(questions: list[dict]) -> str:
+    """Только ответы."""
+    lines = ["✅ Ответы\n"]
+    for i, q in enumerate(questions, 1):
+        answer = q.get("answer")
+        if isinstance(answer, list):
+            answer = ", ".join(str(a) for a in answer)
+        lines.append(f"{i}. {answer}")
 
     return "\n".join(lines)
 

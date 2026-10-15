@@ -1,5 +1,7 @@
 import logging
 import os
+import shutil
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -20,8 +22,10 @@ from app.db.models.result import Result
 from app.db.session import get_db
 from app.schemas.generate import GenerateResponse
 from app.services.audio import extract_audio, get_duration
+from app.services.generator import calculate_llm_cost, generate_questions
 from app.services.parser import parse_document
 from app.services.transcriber import calculate_whisper_cost, transcribe_audio
+from app.services.validator import validate_questions
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -36,6 +40,7 @@ async def generate(
     source_type: str = Form(...),
     difficulty: str = Form(...),
     question_count: int = Form(...),
+    include_summary: bool = Form(True),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateResponse:
     # ─── Валидация параметров ──────────────────────────────
@@ -49,7 +54,7 @@ async def generate(
     if source_type == "video" and not file:
         raise HTTPException(422, "Для video нужен файл")
     if source_type == "text" and not text and not file:
-        raise HTTPException(422, "Для text */нужен текст или файл")
+        raise HTTPException(422, "Для text нужен текст или файл")
 
     task_id = uuid4()
     task_dir = MEDIA_ROOT / str(task_id)
@@ -57,6 +62,7 @@ async def generate(
 
     audio_duration: int | None = None
     source_text: str | None = None
+    transcript: dict | None = None
 
     try:
         # ─── Видео ──────────────────────────────────────────
@@ -80,7 +86,9 @@ async def generate(
 
             duration = await get_duration(file_path)
             if duration > MAX_VIDEO_DURATION_SEC:
-                raise ValidationError(f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов")
+                raise ValidationError(
+                    f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов"
+                )
             audio_duration = int(duration)
 
             # Извлечь аудио
@@ -95,7 +103,7 @@ async def generate(
                 task_id,
                 len(transcript["segments"]),
             )
-        # ─── Текст ──────────────────────────────────────────
+
         # ─── Текст ──────────────────────────────────────────
         elif source_type == "text":
             if text:
@@ -108,7 +116,6 @@ async def generate(
                         f"Допустимо: {', '.join(sorted(ALLOWED_TEXT_EXT))}"
                     )
 
-                # Сохранить файл
                 content = await file.read()
                 if len(content) > MAX_FILE_SIZE_BYTES:
                     raise ValidationError(
@@ -119,7 +126,6 @@ async def generate(
                 file_path = task_dir / f"source{ext}"
                 file_path.write_bytes(content)
 
-                # Парсить
                 logger.info("Task %s: парсю документ %s", task_id, ext)
                 source_text = parse_document(file_path)
                 logger.info(
@@ -131,39 +137,75 @@ async def generate(
             if not source_text:
                 raise ValidationError("Пустой текст")
             if len(source_text) < MIN_TEXT_LENGTH:
-                raise ValidationError(f"Текст короче {MIN_TEXT_LENGTH} символов")
+                raise ValidationError(
+                    f"Текст короче {MIN_TEXT_LENGTH} символов"
+                )
             if len(source_text) > MAX_TEXT_LENGTH:
-                raise ValidationError(f"Текст длиннее {MAX_TEXT_LENGTH} символов")
+                raise ValidationError(
+                    f"Текст длиннее {MAX_TEXT_LENGTH} символов"
+                )
 
-        # ─── Сохранение в БД (пока заглушка) ────────────────
+        # ─── Генерация конспекта и вопросов через LLM ───────
+        source_content = transcript["text"] if source_type == "video" else source_text
+        if not source_content:
+            raise ValidationError("Нет текста для генерации")
+
+        logger.info("Task %s: генерирую вопросы через LLM...", task_id)
+        llm_result = await generate_questions(
+            text=source_content,
+            difficulty=difficulty,
+            question_count=question_count,
+            source_type=source_type,
+            include_summary=include_summary,
+        )
+
+        questions = validate_questions(
+            llm_result["questions"],
+            expected_count=question_count,
+        )
+
+        if not questions:
+            raise ValidationError("LLM не смог сгенерировать вопросы")
+
+        # ─── Стоимость ──────────────────────────────────────
+        cost_whisper = (
+            calculate_whisper_cost(audio_duration) if audio_duration else Decimal("0")
+        )
+        cost_llm = calculate_llm_cost(
+            llm_result["tokens_input"],
+            llm_result["tokens_output"],
+        )
+        cost_total = cost_whisper + cost_llm
+
+        logger.info(
+            "Task %s: готово, %d вопросов, токены %d/%d, стоимость %.2f ₽",
+            task_id,
+            len(questions),
+            llm_result["tokens_input"],
+            llm_result["tokens_output"],
+            cost_total,
+        )
+
+        # ─── Сохранение в БД ────────────────────────────────
         result = Result(
             id=task_id,
             source_type=source_type,
             difficulty=difficulty,
             question_count=question_count,
-            summary="TODO: здесь будет конспект",
-            questions=[],
-            transcript=transcript if source_type == "video" else None,
+            questions=questions,
+            transcript=transcript,
             source_text=source_text,
+            summary=llm_result["summary"] if include_summary else "",
             audio_duration_sec=audio_duration,
-            cost_total=calculate_whisper_cost(audio_duration) if audio_duration else None,
+            cost_total=cost_total,
         )
         db.add(result)
         await db.commit()
 
-        logger.info(
-            "Task %s: type=%s, difficulty=%s, count=%d, duration=%s",
-            task_id,
-            source_type,
-            difficulty,
-            question_count,
-            audio_duration,
-        )
-
         return GenerateResponse(
             id=str(task_id),
             summary=result.summary or "",
-            questions=[],
+            questions=questions,
         )
 
     except ValidationError as e:
@@ -173,3 +215,6 @@ async def generate(
     except Exception as e:
         logger.exception("Ошибка обработки задачи %s", task_id)
         raise HTTPException(500, f"Внутренняя ошибка: {type(e).__name__}") from e
+    finally:
+        if task_dir.exists():
+            shutil.rmtree(task_dir, ignore_errors=True)

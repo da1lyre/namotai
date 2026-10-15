@@ -12,6 +12,7 @@ from bot.keyboards import (
     main_menu,
     difficulty_keyboard,
     count_keyboard,
+    options_keyboard,
     confirm_keyboard,
     after_result_keyboard,
     cancel_keyboard,
@@ -19,7 +20,9 @@ from bot.keyboards import (
 from bot.api_client import generate_from_file, generate_from_text
 from bot.utils import (
     DIFFICULTY_LABELS,
-    format_result,
+    format_summary,
+    format_questions_only,
+    format_answers_only,
     humanize_error,
     split_message,
 )
@@ -28,13 +31,12 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
-TEXT_EXT = {".txt", ".docx", ".pdf"}
 
 
 WELCOME_TEXT = (
-    "👋 <b>Привет! Я Namotai</b> — помощник для активного обучения.\n\n"
+    "👋 Привет! Я Namotai — помощник для активного обучения.\n\n"
     "Превращаю видео и текст в конспект и вопросы для закрепления материала.\n\n"
-    "<b>Что можно отправить:</b>\n"
+    "Что можно отправить:\n"
     "📹 Видео — mp4, mov, mkv, webm\n"
     "📄 Документ — txt, docx, pdf\n"
     "✍️ Или просто текст сообщением\n\n"
@@ -43,16 +45,14 @@ WELCOME_TEXT = (
 
 
 HELP_TEXT = (
-    "ℹ️ <b>Как пользоваться</b>\n\n"
+    "ℹ️ Как пользоваться\n\n"
     "1. Отправь видео, документ или текст\n"
     "2. Выбери сложность вопросов\n"
     "3. Выбери количество вопросов (5–10)\n"
-    "4. Подтверди запуск\n"
-    "5. Дождись результата\n\n"
-    "<b>Что получишь:</b>\n"
-    "• Краткий конспект материала\n"
-    "• Вопросы с ответами для самопроверки\n\n"
-    "<b>Команды:</b>\n"
+    "4. Настрой опции (конспект, ответы)\n"
+    "5. Подтверди запуск\n"
+    "6. Дождись результата\n\n"
+    "Команды:\n"
     "/start — начать заново\n"
     "/help — эта справка\n"
     "/cancel — отменить текущее действие"
@@ -62,9 +62,9 @@ HELP_TEXT = (
 UNKNOWN_TEXT = (
     "🤔 Не понял. Я умею работать с видео и текстом.\n\n"
     "Отправь:\n"
-    "• 📹 Видеофайл\n"
-    "• 📄 Документ (txt, docx, pdf)\n"
-    "• ✍️ Текст сообщением\n\n"
+    "📹 Видеофайл\n"
+    "📄 Документ (txt, docx, pdf)\n"
+    "✍️ Текст сообщением\n\n"
     "Или нажми /help"
 )
 
@@ -106,10 +106,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "restart")
 async def restart(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.answer(
-        "Скидывай новый материал 👇",
-        reply_markup=main_menu(),
-    )
+    await callback.message.answer("Скидывай новый материал 👇", reply_markup=main_menu())
     await callback.answer()
     await state.set_state(GenerateFlow.waiting_for_source)
 
@@ -120,8 +117,7 @@ async def restart(callback: CallbackQuery, state: FSMContext) -> None:
 async def prompt_video(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_source)
     await message.answer(
-        "📹 Отправь видеофайл (mp4, mov, mkv, webm).\n\n"
-        "Можно прикрепить как видео или как документ.",
+        "📹 Отправь видеофайл (mp4, mov, mkv, webm).",
         reply_markup=cancel_keyboard(),
     )
 
@@ -167,11 +163,7 @@ async def handle_file(message: Message, state: FSMContext) -> None:
     )
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
-        f"📎 Получил: <b>{filename}</b> ({size_mb:.1f} МБ)\n\n"
-        "<b>Что дальше:</b>\n"
-        "1. Выбери сложность вопросов\n"
-        "2. Выбери количество\n"
-        "3. Подтверди запуск\n\n"
+        f"📎 Получил: {filename} ({size_mb:.1f} МБ)\n\n"
         "Выбери сложность:",
         reply_markup=difficulty_keyboard(),
     )
@@ -194,10 +186,6 @@ async def handle_text(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
         f"📝 Получил текст ({len(text)} символов)\n\n"
-        "<b>Что дальше:</b>\n"
-        "1. Выбери сложность вопросов\n"
-        "2. Выбери количество\n"
-        "3. Подтверди запуск\n\n"
         "Выбери сложность:",
         reply_markup=difficulty_keyboard(),
     )
@@ -208,7 +196,7 @@ async def unknown_message(message: Message) -> None:
     await message.answer(UNKNOWN_TEXT, reply_markup=main_menu())
 
 
-# ─── Выбор параметров ──────────────────────────────────────
+# ─── Сложность ─────────────────────────────────────────────
 
 @router.callback_query(GenerateFlow.waiting_for_difficulty, F.data.startswith("diff:"))
 async def handle_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
@@ -216,20 +204,72 @@ async def handle_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(difficulty=difficulty)
     await state.set_state(GenerateFlow.waiting_for_count)
     await callback.message.edit_text(
-        f"Сложность: <b>{DIFFICULTY_LABELS[difficulty]}</b>\n\n"
+        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\n"
         "Сколько вопросов сгенерировать?",
         reply_markup=count_keyboard(),
     )
     await callback.answer()
 
 
+# ─── Количество ────────────────────────────────────────────
+
 @router.callback_query(GenerateFlow.waiting_for_count, F.data.startswith("count:"))
 async def handle_count(callback: CallbackQuery, state: FSMContext) -> None:
     count = int(callback.data.split(":")[1])
-    await state.update_data(question_count=count)
-    await state.set_state(GenerateFlow.waiting_for_confirmation)
+    await state.update_data(
+        question_count=count,
+        include_summary=True,
+        include_answers=True,
+    )
+    await state.set_state(GenerateFlow.waiting_for_options)
+    await callback.message.edit_text(
+        "⚙️ Что включить в результат?\n\n"
+        "Нажми на опцию, чтобы включить или выключить.",
+        reply_markup=options_keyboard(True, True),
+    )
+    await callback.answer()
 
+
+# ─── Опции ─────────────────────────────────────────────────
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:summary")
+async def toggle_summary(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
+    new_value = not data.get("include_summary", True)
+    await state.update_data(include_summary=new_value)
+
+    include_answers = data.get("include_answers", True)
+    await callback.message.edit_reply_markup(
+        reply_markup=options_keyboard(new_value, include_answers)
+    )
+    await callback.answer()
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:answers")
+async def toggle_answers(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    new_value = not data.get("include_answers", True)
+    await state.update_data(include_answers=new_value)
+
+    include_summary = data.get("include_summary", True)
+    await callback.message.edit_reply_markup(
+        reply_markup=options_keyboard(include_summary, new_value)
+    )
+    await callback.answer()
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:nope")
+async def nope(callback: CallbackQuery) -> None:
+    await callback.answer(
+        "Выбери хотя бы конспект или ответы",
+        show_alert=True,
+    )
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:start")
+async def options_done(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    await state.set_state(GenerateFlow.waiting_for_confirmation)
     await callback.message.edit_text(
         _confirmation_text(data),
         reply_markup=confirm_keyboard(),
@@ -241,20 +281,23 @@ def _confirmation_text(data: dict) -> str:
     if data["source_type"] == "text_input":
         source_info = f"📄 Текст: {len(data['text'])} символов"
     else:
-        source_info = (
-            f"📎 Файл: <b>{data['filename']}</b> ({data['size_mb']:.1f} МБ)"
-        )
+        source_info = f"📎 Файл: {data['filename']} ({data['size_mb']:.1f} МБ)"
+
+    summary_mark = "✅" if data.get("include_summary", True) else "❌"
+    answers_mark = "✅" if data.get("include_answers", True) else "❌"
 
     return (
-        "📋 <b>Проверь перед запуском</b>\n\n"
+        "📋 Проверь перед запуском\n\n"
         f"{source_info}\n"
-        f"🎯 Сложность: <b>{DIFFICULTY_LABELS[data['difficulty']]}</b>\n"
-        f"❓ Вопросов: <b>{data['question_count']}</b>\n\n"
+        f"🎯 Сложность: {DIFFICULTY_LABELS[data['difficulty']]}\n"
+        f"❓ Вопросов: {data['question_count']}\n"
+        f"📝 Конспект: {summary_mark}\n"
+        f"✅ Ответы: {answers_mark}\n\n"
         "Всё верно?"
     )
 
 
-# ─── Редактирование параметров ─────────────────────────────
+# ─── Редактирование ────────────────────────────────────────
 
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "edit:difficulty")
 async def edit_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
@@ -276,7 +319,21 @@ async def edit_count(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
-# ─── Запуск обработки ──────────────────────────────────────
+@router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "edit:options")
+async def edit_options(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    await state.set_state(GenerateFlow.waiting_for_options)
+    await callback.message.edit_text(
+        "⚙️ Что включить в результат?",
+        reply_markup=options_keyboard(
+            data.get("include_summary", True),
+            data.get("include_answers", True),
+        ),
+    )
+    await callback.answer()
+
+
+# ─── Запуск ────────────────────────────────────────────────
 
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "confirm")
 async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
@@ -286,16 +343,14 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         progress_msg = await callback.message.edit_text(
-            "⏳ <b>Обрабатываю материал...</b>\n\n"
+            "⏳ Обрабатываю материал...\n\n"
             "▓░░░░░░░░░ 10%\n"
-            "Читаю материал...",
+            "Читаю материал..."
         )
     except Exception:
         progress_msg = callback.message
 
-    progress_task = asyncio.create_task(
-        _update_progress(progress_msg, callback.bot)
-    )
+    progress_task = asyncio.create_task(_update_progress(progress_msg))
 
     try:
         if data["source_type"] == "text_input":
@@ -303,6 +358,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 text=data["text"],
                 difficulty=data["difficulty"],
                 question_count=data["question_count"],
+                include_summary=data.get("include_summary", True),
             )
         else:
             file = await callback.bot.get_file(data["file_id"])
@@ -318,6 +374,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 difficulty=data["difficulty"],
                 question_count=data["question_count"],
                 source_type=source_type,
+                include_summary=data.get("include_summary", True),
             )
 
         progress_task.cancel()
@@ -327,7 +384,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
         except Exception:
             pass
 
-        await send_result(callback.message, result)
+        await send_result(callback.message, result, data)
 
     except Exception as e:
         progress_task.cancel()
@@ -346,7 +403,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
 
 
-async def _update_progress(message: Message, bot) -> None:
+async def _update_progress(message: Message) -> None:
     stages = [
         (10, "▓░░░░░░░░░ 10%\nЧитаю материал..."),
         (30, "▓▓▓░░░░░░░ 30%\nРазбираю содержимое..."),
@@ -357,20 +414,20 @@ async def _update_progress(message: Message, bot) -> None:
         for delay, text in stages:
             await asyncio.sleep(delay)
             try:
-                await message.edit_text(
-                    f"⏳ <b>Обрабатываю материал...</b>\n\n{text}"
-                )
+                await message.edit_text(f"⏳ Обрабатываю материал...\n\n{text}")
             except Exception:
                 pass
     except asyncio.CancelledError:
         pass
 
 
-# ─── Отправка результата ───────────────────────────────────
+# ─── Результат ─────────────────────────────────────────────
 
-async def send_result(message: Message, result: dict) -> None:
+async def send_result(message: Message, result: dict, data: dict) -> None:
     summary = result.get("summary", "")
     questions = result.get("questions", [])
+    include_summary = data.get("include_summary", True)
+    include_answers = data.get("include_answers", True)
 
     if not summary and not questions:
         await message.answer(
@@ -379,18 +436,19 @@ async def send_result(message: Message, result: dict) -> None:
         )
         return
 
-    header = f"✅ <b>Готово!</b> Конспект и {len(questions)} вопросов.\n"
-    await message.answer(header)
+    # Конспект
+    if include_summary and summary:
+        for chunk in split_message(format_summary(summary)):
+            await message.answer(chunk)
 
-    if summary:
-        await message.answer(f"📝 <b>Конспект</b>\n\n{summary}")
-
+    # Вопросы
     if questions:
-        for chunk in split_message(format_result("", questions, include_summary=False)):
-            if chunk.strip():
+        for chunk in split_message(format_questions_only(questions)):
+            await message.answer(chunk)
+
+        # Ответы — отдельным сообщением, если включены
+        if include_answers:
+            for chunk in split_message(format_answers_only(questions)):
                 await message.answer(chunk)
 
-    await message.answer(
-        "Что дальше?",
-        reply_markup=after_result_keyboard(),
-    )
+    await message.answer("Что дальше?", reply_markup=after_result_keyboard())

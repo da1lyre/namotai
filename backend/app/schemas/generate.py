@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+
 SourceType = Literal["video", "text"]
 Difficulty = Literal["easy", "medium", "hard"]
 QuestionType = Literal["single_choice", "multiple_choice", "open"]

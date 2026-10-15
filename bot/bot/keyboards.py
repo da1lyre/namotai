@@ -1,8 +1,8 @@
 from aiogram.types import (
-    InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
+    InlineKeyboardButton,
     ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 
 
@@ -42,14 +42,49 @@ def count_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def options_keyboard(include_summary: bool, include_answers: bool) -> InlineKeyboardMarkup:
+    summary_mark = "✅" if include_summary else "❌"
+    answers_mark = "✅" if include_answers else "❌"
+    can_start = include_summary or include_answers
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{summary_mark} Конспект",
+                callback_data="opt:summary",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"{answers_mark} Ответы к вопросам",
+                callback_data="opt:answers",
+            )
+        ],
+    ]
+
+    if can_start:
+        rows.append(
+            [InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start")]
+        )
+    else:
+        rows.append(
+            [InlineKeyboardButton(text="⛔ Нужно выбрать хотя бы одно", callback_data="opt:nope")]
+        )
+
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Запустить", callback_data="confirm")],
             [
-                InlineKeyboardButton(text="✏️ Изменить сложность", callback_data="edit:difficulty"),
-                InlineKeyboardButton(text="✏️ Изменить количество", callback_data="edit:count"),
+                InlineKeyboardButton(text="✏️ Сложность", callback_data="edit:difficulty"),
+                InlineKeyboardButton(text="✏️ Количество", callback_data="edit:count"),
             ],
+            [InlineKeyboardButton(text="⚙️ Опции", callback_data="edit:options")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
         ]
     )
