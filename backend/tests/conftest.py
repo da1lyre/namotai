@@ -1,44 +1,30 @@
-# tests/conftest.py
-from unittest.mock import AsyncMock, patch
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from httpx import AsyncClient
+from fastapi.testclient import TestClient
 
-# Импортируем твое приложение.
-# Предположим, что main.py создает app и включает router из generate.py
+from app.db.session import get_db
 from app.main import app
 
 
 @pytest.fixture
-def client():
-    """Фикстура для асинхронного клиента"""
-    return AsyncClient(app=app, base_url="http://test")
+def mock_db() -> AsyncMock:
+    """Мок AsyncSession — не пишет в реальную БД."""
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    return session
 
 
-@pytest.fixture(autouse=True)
-def mock_media_root(tmp_path):
-    """
-    Подменяем MEDIA_ROOT на временную директорию pytest,
-    чтобы тесты не писали в /data/media и не требовали прав root.
-    """
-    with patch('app.services.generate.MEDIA_ROOT', tmp_path):
-        yield tmp_path
+@pytest.fixture
+def client(mock_db: AsyncMock) -> TestClient:
+    """TestClient с подменённой get_db."""
 
+    async def override_get_db() -> AsyncGenerator[AsyncMock, None]:
+        yield mock_db
 
-@pytest.fixture(autouse=True)
-def mock_db_session():
-    """
-    Мокаем сессию БД, чтобы тесты не зависели от реального Postgres.
-    Если хочешь интеграционные тесты с реальной БД — убери эту фикстуру
-    и настрой test database URL.
-    """
-
-    async def get_fake_db():
-        from unittest.mock import MagicMock
-        session = MagicMock()
-        session.add = MagicMock()
-        session.commit = AsyncMock()
-        return session
-
-    with patch('app.db.session.get_db', get_fake_db):
-        yield
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
