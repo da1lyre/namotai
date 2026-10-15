@@ -1,21 +1,21 @@
 import asyncio
 import logging
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
-from bot.states import GenerateFlow
+from bot.api_client import generate_from_file, generate_from_text
 from bot.keyboards import (
-    main_menu,
-    difficulty_keyboard,
-    count_keyboard,
-    confirm_keyboard,
     after_result_keyboard,
     cancel_keyboard,
+    confirm_keyboard,
+    count_keyboard,
+    difficulty_keyboard,
+    main_menu,
 )
-from bot.api_client import generate_from_file, generate_from_text
+from bot.states import GenerateFlow
 from bot.utils import (
     DIFFICULTY_LABELS,
     format_result,
