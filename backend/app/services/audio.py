@@ -12,9 +12,12 @@ async def get_duration(path: Path) -> float:
 
     proc = await asyncio.create_subprocess_exec(
         "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         str(path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -22,9 +25,7 @@ async def get_duration(path: Path) -> float:
     stdout, stderr = await proc.communicate()
 
     if proc.returncode != 0:
-        raise ValidationError(
-            f"Не удалось прочитать файл: {stderr.decode().strip()[:200]}"
-        )
+        raise ValidationError(f"Не удалось прочитать файл: {stderr.decode().strip()[:200]}")
 
     try:
         return float(stdout.decode().strip())

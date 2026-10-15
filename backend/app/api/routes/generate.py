@@ -1,5 +1,4 @@
 import logging
-import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -78,9 +77,7 @@ async def generate(
 
             duration = await get_duration(file_path)
             if duration > MAX_VIDEO_DURATION_SEC:
-                raise ValidationError(
-                    f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов"
-                )
+                raise ValidationError(f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов")
             audio_duration = int(duration)
 
         # ─── Текст ──────────────────────────────────────────
@@ -105,13 +102,9 @@ async def generate(
             if not source_text:
                 raise ValidationError("Пустой текст")
             if len(source_text) < MIN_TEXT_LENGTH:
-                raise ValidationError(
-                    f"Текст короче {MIN_TEXT_LENGTH} символов"
-                )
+                raise ValidationError(f"Текст короче {MIN_TEXT_LENGTH} символов")
             if len(source_text) > MAX_TEXT_LENGTH:
-                raise ValidationError(
-                    f"Текст длиннее {MAX_TEXT_LENGTH} символов"
-                )
+                raise ValidationError(f"Текст длиннее {MAX_TEXT_LENGTH} символов")
 
         # ─── Сохранение в БД (пока заглушка) ────────────────
         result = Result(
@@ -129,7 +122,11 @@ async def generate(
 
         logger.info(
             "Task %s: type=%s, difficulty=%s, count=%d, duration=%s",
-            task_id, source_type, difficulty, question_count, audio_duration,
+            task_id,
+            source_type,
+            difficulty,
+            question_count,
+            audio_duration,
         )
 
         return GenerateResponse(
@@ -139,12 +136,9 @@ async def generate(
         )
 
     except ValidationError as e:
-        raise HTTPException(e.status_code, e.message)
+        raise HTTPException(e.status_code, e.message) from e
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Ошибка обработки задачи %s", task_id)
-        raise HTTPException(500, f"Внутренняя ошибка: {type(e).__name__}")
-    finally:
-        if task_dir.exists():
-            shutil.rmtree(task_dir, ignore_errors=True)
+        raise HTTPException(500, f"Внутренняя ошибка: {type(e).__name__}") from e
