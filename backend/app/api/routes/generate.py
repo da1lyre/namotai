@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,8 +24,7 @@ from app.services.audio import get_duration
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-MEDIA_ROOT = Path("/data/media")
-
+MEDIA_ROOT = Path(os.getenv("MEDIA_DIR", "/tmp/namotai-media"))
 
 @router.post("/api/generate", response_model=GenerateResponse, status_code=201)
 async def generate(
