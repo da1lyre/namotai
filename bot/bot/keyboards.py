@@ -42,14 +42,79 @@ def count_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def options_keyboard(
+    include_summary: bool,
+    include_answers: bool,
+    delivery: str,
+    file_format: str,
+) -> InlineKeyboardMarkup:
+    summary_mark = "✅" if include_summary else "❌"
+    answers_mark = "✅" if include_answers else "❌"
+    chat_mark = "✅" if delivery == "chat" else "⬜"
+    file_mark = "✅" if delivery == "file" else "⬜"
+    md_mark = "✅" if file_format == "md" else "⬜"
+    pdf_mark = "✅" if file_format == "pdf" else "⬜"
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{summary_mark} Конспект",
+                callback_data="opt:toggle:summary",
+            ),
+            InlineKeyboardButton(
+                text=f"{answers_mark} Ответы",
+                callback_data="opt:toggle:answers",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"{chat_mark} В чат",
+                callback_data="opt:delivery:chat",
+            ),
+            InlineKeyboardButton(
+                text=f"{file_mark} Файлом",
+                callback_data="opt:delivery:file",
+            ),
+        ],
+    ]
+
+    if delivery == "file":
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{md_mark} MD",
+                    callback_data="opt:format:md",
+                ),
+                InlineKeyboardButton(
+                    text=f"{pdf_mark} PDF",
+                    callback_data="opt:format:pdf",
+                ),
+            ]
+        )
+
+    rows.append(
+        [
+            InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
+        ]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Запустить", callback_data="confirm")],
             [
-                InlineKeyboardButton(text="✏️ Изменить сложность", callback_data="edit:difficulty"),
-                InlineKeyboardButton(text="✏️ Изменить количество", callback_data="edit:count"),
+                InlineKeyboardButton(text="✏️ Сложность", callback_data="edit:difficulty"),
+                InlineKeyboardButton(text="✏️ Количество", callback_data="edit:count"),
             ],
+            [InlineKeyboardButton(text="⚙️ Опции", callback_data="edit:options")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
         ]
     )

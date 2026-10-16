@@ -26,11 +26,15 @@ class Settings(BaseSettings):
     # Rate limit
     rate_limit_per_day: int = 5
 
-    # Cloud.ru
+    # Cloud.ru (Whisper)
     cloud_ru_api_key: str = ""
     cloud_ru_base_url: str = ""
     whisper_model: str = ""
-    llm_model: str = ""
+
+    # Selectel (LLM)
+    selectel_api_key: str = ""
+    selectel_base_url: str = "https://api.tf.selcloud.ru/v1"
+    selectel_llm_model: str = "qwen3.8-27b"
 
 
 settings = Settings()

@@ -91,23 +91,6 @@ def test_text_without_content(client):
     assert response.status_code == 422
 
 
-def test_text_success(client):
-    response = client.post(
-        "/api/generate",
-        data={
-            "text": VALID_TEXT,
-            "source_type": "text",
-            "difficulty": "medium",
-            "question_count": 5,
-        },
-    )
-    assert response.status_code == 201
-    data = response.json()
-    assert "id" in data
-    assert data["summary"] == "TODO: здесь будет конспект"
-    assert data["questions"] == []
-
-
 def test_invalid_video_extension(client):
     import io
 
