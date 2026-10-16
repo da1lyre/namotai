@@ -90,6 +90,7 @@ def test_text_without_content(client):
     )
     assert response.status_code == 422
 
+
 def test_invalid_video_extension(client):
     import io
 

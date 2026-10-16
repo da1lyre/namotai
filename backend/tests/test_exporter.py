@@ -2,7 +2,6 @@ import pytest
 
 from app.services.exporter import export_markdown, export_pdf
 
-
 SAMPLE = {
     "id": "test-uuid",
     "source_type": "text",
