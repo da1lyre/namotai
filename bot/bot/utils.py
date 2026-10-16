@@ -11,19 +11,12 @@ def humanize_error(error: Exception) -> str:
     msg = str(error).lower()
 
     if "413" in msg or "больше" in msg or "too large" in msg:
-        return (
-            "😔 Файл слишком большой. Максимум — 100 МБ.\n\n"
-            "Попробуй сжать видео или отправь другой файл."
-        )
+        return "😔 Файл слишком большой. Максимум — 100 МБ."
 
     if "422" in msg or "не поддерживается" in msg:
-        return (
-            "😔 Не удалось обработать файл.\n\n"
-            "Проверь формат: видео — mp4, mov, mkv, webm; "
-            "текст — txt, docx, pdf."
-        )
+        return "😔 Не удалось обработать файл. Проверь формат."
 
-    if "длиннее" in msg or "2 часов" in msg or "7200" in msg:
+    if "длиннее" in msg or "7200" in msg:
         return "😔 Видео слишком длинное. Максимум — 2 часа."
 
     if "короткий" in msg or "100 символов" in msg:
@@ -43,28 +36,25 @@ def format_summary(summary: str) -> str:
 
 
 def format_questions_only(questions: list[dict]) -> str:
-    """Только вопросы, без ответов."""
     lines = ["❓ Вопросы\n"]
     for i, q in enumerate(questions, 1):
         lines.append(f"\n{i}. {q.get('question', '')}")
-
         options = q.get("options") or []
         for j, opt in enumerate(options):
             letter = chr(ord("A") + j)
             lines.append(f"   {letter}) {opt}")
-
     return "\n".join(lines)
 
 
 def format_answers_only(questions: list[dict]) -> str:
-    """Только ответы."""
     lines = ["✅ Ответы\n"]
     for i, q in enumerate(questions, 1):
         answer = q.get("answer")
+        if not answer:
+            continue
         if isinstance(answer, list):
             answer = ", ".join(str(a) for a in answer)
         lines.append(f"{i}. {answer}")
-
     return "\n".join(lines)
 
 

@@ -42,36 +42,60 @@ def count_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def options_keyboard(include_summary: bool, include_answers: bool) -> InlineKeyboardMarkup:
+def options_keyboard(
+    include_summary: bool,
+    include_answers: bool,
+    delivery: str,
+    file_format: str,
+) -> InlineKeyboardMarkup:
     summary_mark = "✅" if include_summary else "❌"
     answers_mark = "✅" if include_answers else "❌"
-    can_start = include_summary or include_answers
+    chat_mark = "✅" if delivery == "chat" else "⬜"
+    file_mark = "✅" if delivery == "file" else "⬜"
+    md_mark = "✅" if file_format == "md" else "⬜"
+    pdf_mark = "✅" if file_format == "pdf" else "⬜"
 
     rows = [
         [
             InlineKeyboardButton(
                 text=f"{summary_mark} Конспект",
-                callback_data="opt:summary",
-            )
+                callback_data="opt:toggle:summary",
+            ),
+            InlineKeyboardButton(
+                text=f"{answers_mark} Ответы",
+                callback_data="opt:toggle:answers",
+            ),
         ],
         [
             InlineKeyboardButton(
-                text=f"{answers_mark} Ответы к вопросам",
-                callback_data="opt:answers",
-            )
+                text=f"{chat_mark} В чат",
+                callback_data="opt:delivery:chat",
+            ),
+            InlineKeyboardButton(
+                text=f"{file_mark} Файлом",
+                callback_data="opt:delivery:file",
+            ),
         ],
     ]
 
-    if can_start:
-        rows.append(
-            [InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start")]
-        )
-    else:
-        rows.append(
-            [InlineKeyboardButton(text="⛔ Нужно выбрать хотя бы одно", callback_data="opt:nope")]
-        )
+    if delivery == "file":
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{md_mark} MD",
+                callback_data="opt:format:md",
+            ),
+            InlineKeyboardButton(
+                text=f"{pdf_mark} PDF",
+                callback_data="opt:format:pdf",
+            ),
+        ])
 
-    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
+    rows.append([
+        InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
+    ])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

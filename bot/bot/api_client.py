@@ -14,6 +14,7 @@ async def generate_from_file(
     question_count: int,
     source_type: str = "video",
     include_summary: bool = True,
+    include_answers: bool = True,
 ) -> dict:
     async with httpx.AsyncClient(timeout=600) as client:
         response = await client.post(
@@ -24,6 +25,7 @@ async def generate_from_file(
                 "difficulty": difficulty,
                 "question_count": question_count,
                 "include_summary": str(include_summary).lower(),
+                "include_answers": str(include_answers).lower(),
             },
         )
         if response.status_code >= 400:
@@ -37,6 +39,7 @@ async def generate_from_text(
     difficulty: str,
     question_count: int,
     include_summary: bool = True,
+    include_answers: bool = True,
 ) -> dict:
     async with httpx.AsyncClient(timeout=600) as client:
         response = await client.post(
@@ -47,9 +50,20 @@ async def generate_from_text(
                 "difficulty": difficulty,
                 "question_count": question_count,
                 "include_summary": str(include_summary).lower(),
+                "include_answers": str(include_answers).lower(),
             },
         )
         if response.status_code >= 400:
             logger.error("API %d: %s", response.status_code, response.text[:500])
         response.raise_for_status()
         return response.json()
+
+
+async def export_result(result_id: str, fmt: str) -> bytes:
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.get(
+            f"{settings.api_url}/api/results/{result_id}/export",
+            params={"format": fmt},
+        )
+        response.raise_for_status()
+        return response.content

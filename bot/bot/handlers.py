@@ -2,10 +2,12 @@ import asyncio
 import logging
 from pathlib import Path
 
+from aiogram.exceptions import TelegramBadRequest
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from bot.states import GenerateFlow
 from bot.keyboards import (
@@ -17,7 +19,11 @@ from bot.keyboards import (
     after_result_keyboard,
     cancel_keyboard,
 )
-from bot.api_client import generate_from_file, generate_from_text
+from bot.api_client import (
+    generate_from_file,
+    generate_from_text,
+    export_result,
+)
 from bot.utils import (
     DIFFICULTY_LABELS,
     format_summary,
@@ -49,7 +55,7 @@ HELP_TEXT = (
     "1. Отправь видео, документ или текст\n"
     "2. Выбери сложность вопросов\n"
     "3. Выбери количество вопросов (5–10)\n"
-    "4. Настрой опции (конспект, ответы)\n"
+    "4. Настрой опции: конспект, ответы, доставка\n"
     "5. Подтверди запуск\n"
     "6. Дождись результата\n\n"
     "Команды:\n"
@@ -220,50 +226,78 @@ async def handle_count(callback: CallbackQuery, state: FSMContext) -> None:
         question_count=count,
         include_summary=True,
         include_answers=True,
+        delivery="chat",
+        file_format="md",
     )
     await state.set_state(GenerateFlow.waiting_for_options)
     await callback.message.edit_text(
-        "⚙️ Что включить в результат?\n\n"
-        "Нажми на опцию, чтобы включить или выключить.",
-        reply_markup=options_keyboard(True, True),
+        "⚙️ Настройки результата\n\n"
+        "Нажми на опции, чтобы изменить.",
+        reply_markup=options_keyboard(True, True, "chat", "md"),
     )
     await callback.answer()
 
 
 # ─── Опции ─────────────────────────────────────────────────
 
-@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:summary")
+async def _refresh_options(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=options_keyboard(
+                include_summary=data.get("include_summary", True),
+                include_answers=data.get("include_answers", True),
+                delivery=data.get("delivery", "chat"),
+                file_format=data.get("file_format", "md"),
+            )
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:toggle:summary")
 async def toggle_summary(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    new_value = not data.get("include_summary", True)
-    await state.update_data(include_summary=new_value)
-
-    include_answers = data.get("include_answers", True)
-    await callback.message.edit_reply_markup(
-        reply_markup=options_keyboard(new_value, include_answers)
-    )
+    await state.update_data(include_summary=not data.get("include_summary", True))
+    await _refresh_options(callback, state)
     await callback.answer()
 
 
-@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:answers")
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:toggle:answers")
 async def toggle_answers(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    new_value = not data.get("include_answers", True)
-    await state.update_data(include_answers=new_value)
-
-    include_summary = data.get("include_summary", True)
-    await callback.message.edit_reply_markup(
-        reply_markup=options_keyboard(include_summary, new_value)
-    )
+    await state.update_data(include_answers=not data.get("include_answers", True))
+    await _refresh_options(callback, state)
     await callback.answer()
 
 
-@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:nope")
-async def nope(callback: CallbackQuery) -> None:
-    await callback.answer(
-        "Выбери хотя бы конспект или ответы",
-        show_alert=True,
-    )
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:delivery:chat")
+async def set_delivery_chat(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(delivery="chat")
+    await _refresh_options(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:delivery:file")
+async def set_delivery_file(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(delivery="file")
+    await _refresh_options(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:format:md")
+async def set_format_md(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(file_format="md")
+    await _refresh_options(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:format:pdf")
+async def set_format_pdf(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(file_format="pdf")
+    await _refresh_options(callback, state)
+    await callback.answer()
 
 
 @router.callback_query(GenerateFlow.waiting_for_options, F.data == "opt:start")
@@ -286,13 +320,21 @@ def _confirmation_text(data: dict) -> str:
     summary_mark = "✅" if data.get("include_summary", True) else "❌"
     answers_mark = "✅" if data.get("include_answers", True) else "❌"
 
+    delivery = data.get("delivery", "chat")
+    if delivery == "chat":
+        delivery_info = "💬 В чат"
+    else:
+        fmt = data.get("file_format", "md").upper()
+        delivery_info = f"📥 Файлом ({fmt})"
+
     return (
         "📋 Проверь перед запуском\n\n"
         f"{source_info}\n"
         f"🎯 Сложность: {DIFFICULTY_LABELS[data['difficulty']]}\n"
         f"❓ Вопросов: {data['question_count']}\n"
         f"📝 Конспект: {summary_mark}\n"
-        f"✅ Ответы: {answers_mark}\n\n"
+        f"✅ Ответы: {answers_mark}\n"
+        f"📤 Доставка: {delivery_info}\n\n"
         "Всё верно?"
     )
 
@@ -324,10 +366,12 @@ async def edit_options(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     await state.set_state(GenerateFlow.waiting_for_options)
     await callback.message.edit_text(
-        "⚙️ Что включить в результат?",
+        "⚙️ Настройки результата",
         reply_markup=options_keyboard(
             data.get("include_summary", True),
             data.get("include_answers", True),
+            data.get("delivery", "chat"),
+            data.get("file_format", "md"),
         ),
     )
     await callback.answer()
@@ -344,8 +388,6 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         progress_msg = await callback.message.edit_text(
             "⏳ Обрабатываю материал...\n\n"
-            "▓░░░░░░░░░ 10%\n"
-            "Читаю материал..."
         )
     except Exception:
         progress_msg = callback.message
@@ -353,12 +395,16 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
     progress_task = asyncio.create_task(_update_progress(progress_msg))
 
     try:
+        include_summary = data.get("include_summary", True)
+        include_answers = data.get("include_answers", True)
+
         if data["source_type"] == "text_input":
             result = await generate_from_text(
                 text=data["text"],
                 difficulty=data["difficulty"],
                 question_count=data["question_count"],
-                include_summary=data.get("include_summary", True),
+                include_summary=include_summary,
+                include_answers=include_answers,
             )
         else:
             file = await callback.bot.get_file(data["file_id"])
@@ -374,10 +420,9 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
                 difficulty=data["difficulty"],
                 question_count=data["question_count"],
                 source_type=source_type,
-                include_summary=data.get("include_summary", True),
+                include_summary=include_summary,
+                include_answers=include_answers,
             )
-
-        progress_task.cancel()
 
         try:
             await callback.message.delete()
@@ -387,7 +432,6 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await send_result(callback.message, result, data)
 
     except Exception as e:
-        progress_task.cancel()
         logger.exception("Ошибка при обработке")
         try:
             await callback.message.edit_text(
@@ -403,27 +447,35 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
 
 
-async def _update_progress(message: Message) -> None:
-    stages = [
-        (10, "▓░░░░░░░░░ 10%\nЧитаю материал..."),
-        (30, "▓▓▓░░░░░░░ 30%\nРазбираю содержимое..."),
-        (60, "▓▓▓▓▓░░░░░ 50%\nГотовлю конспект..."),
-        (90, "▓▓▓▓▓▓▓░░░ 70%\nГенерирую вопросы..."),
-    ]
-    try:
-        for delay, text in stages:
-            await asyncio.sleep(delay)
-            try:
-                await message.edit_text(f"⏳ Обрабатываю материал...\n\n{text}")
-            except Exception:
-                pass
-    except asyncio.CancelledError:
-        pass
-
-
 # ─── Результат ─────────────────────────────────────────────
 
 async def send_result(message: Message, result: dict, data: dict) -> None:
+    result_id = result.get("id", "")
+    delivery = data.get("delivery", "chat")
+
+    # Доставка файлом
+    if delivery == "file":
+        file_format = data.get("file_format", "md")
+        try:
+            file_bytes = await export_result(result_id, file_format)
+            file = BufferedInputFile(
+                file_bytes,
+                filename=f"namotai-{result_id[:8]}.{file_format}",
+            )
+            await message.answer_document(
+                file,
+                caption="Готово! Что дальше?",
+                reply_markup=after_result_keyboard(),
+            )
+        except Exception as e:
+            logger.exception("Ошибка экспорта")
+            await message.answer(
+                f"😔 Не удалось сформировать файл ({type(e).__name__})",
+                reply_markup=after_result_keyboard(),
+            )
+        return
+
+    # Доставка в чат
     summary = result.get("summary", "")
     questions = result.get("questions", [])
     include_summary = data.get("include_summary", True)
@@ -436,19 +488,19 @@ async def send_result(message: Message, result: dict, data: dict) -> None:
         )
         return
 
-    # Конспект
     if include_summary and summary:
         for chunk in split_message(format_summary(summary)):
             await message.answer(chunk)
 
-    # Вопросы
     if questions:
         for chunk in split_message(format_questions_only(questions)):
             await message.answer(chunk)
 
-        # Ответы — отдельным сообщением, если включены
-        if include_answers:
+        if include_answers and any(q.get("answer") for q in questions):
             for chunk in split_message(format_answers_only(questions)):
                 await message.answer(chunk)
 
-    await message.answer("Что дальше?", reply_markup=after_result_keyboard())
+    await message.answer(
+        "Что дальше?",
+        reply_markup=after_result_keyboard(),
+    )

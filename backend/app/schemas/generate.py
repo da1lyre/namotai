@@ -12,7 +12,7 @@ class Question(BaseModel):
     question: str
     type: QuestionType
     options: list[str] | None = None
-    answer: str | list[str]
+    answer: str | list[str] | None = None
     source_ref: dict | None = None
 
 

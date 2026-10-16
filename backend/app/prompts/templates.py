@@ -14,12 +14,40 @@ DIFFICULTY_INSTRUCTIONS = {
 }
 
 
-SYSTEM_PROMPT = """Ты — опытный методист, который создаёт учебные задания по материалу.
+def build_prompt(
+    text: str,
+    difficulty: str,
+    question_count: int,
+    source_type: str,
+    include_summary: bool = True,
+    include_answers: bool = True,
+) -> dict:
+    difficulty_instruction = DIFFICULTY_INSTRUCTIONS.get(
+        difficulty, DIFFICULTY_INSTRUCTIONS["medium"]
+    )
+
+    # Задачи
+    tasks = ["1. Прочитать предоставленный материал."]
+    if include_summary:
+        tasks.append("2. Составить краткий конспект (3–7 предложений).")
+    tasks.append(f"{len(tasks) + 1}. Придумать {question_count} качественных вопросов.")
+
+    # Поля JSON
+    answer_field = (
+        ',\n      "answer": "правильный ответ или массив"'
+        if include_answers
+        else ""
+    )
+    summary_field = (
+        '"summary": "конспект в 3-7 предложениях",'
+        if include_summary
+        else '"summary": "",'
+    )
+
+    system = f"""Ты — опытный методист, который создаёт учебные задания по материалу.
 
 Твоя задача:
-1. Прочитать предоставленный материал.
-{summary_instruction}
-3. Придумать {count} качественных вопросов для проверки понимания.
+{chr(10).join(tasks)}
 
 Требования к вопросам:
 - {difficulty_instruction}
@@ -32,41 +60,17 @@ SYSTEM_PROMPT = """Ты — опытный методист, который со
 
 Формат ответа — строго JSON:
 {{
-  "summary": "конспект или пустая строка, если не нужен",
+  {summary_field}
   "questions": [
     {{
       "question": "текст вопроса",
       "type": "single_choice | multiple_choice | open",
       "options": ["A", "B", "C", "D"],
-      "answer": "правильный ответ или массив",
-      "source_ref": {{"chunk": 1}}
+      "source_ref": {{"chunk": 1}}{answer_field}
     }}
   ]
 }}
 
 Никаких обёрток, никаких пояснений — только JSON."""
-
-def build_prompt(
-    text: str,
-    difficulty: str,
-    question_count: int,
-    source_type: str,
-    include_summary: bool = True,
-) -> dict:
-    difficulty_instruction = DIFFICULTY_INSTRUCTIONS.get(
-        difficulty, DIFFICULTY_INSTRUCTIONS["medium"]
-    )
-
-    summary_instruction = (
-        "2. Составить краткий конспект (3–7 предложений)."
-        if include_summary
-        else "2. Конспект НЕ нужен — пропусти этот шаг."
-    )
-
-    system = SYSTEM_PROMPT.format(
-        count=question_count,
-        difficulty_instruction=difficulty_instruction,
-        summary_instruction=summary_instruction,
-    )
 
     return {"system": system, "user": f"Материал:\n\n{text}"}

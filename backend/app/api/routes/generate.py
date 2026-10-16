@@ -41,6 +41,7 @@ async def generate(
     difficulty: str = Form(...),
     question_count: int = Form(...),
     include_summary: bool = Form(True),
+    include_answers: bool = Form(True),
     db: AsyncSession = Depends(get_db),
 ) -> GenerateResponse:
     # ─── Валидация параметров ──────────────────────────────
@@ -157,11 +158,13 @@ async def generate(
             question_count=question_count,
             source_type=source_type,
             include_summary=include_summary,
+            include_answers=include_answers,
         )
 
         questions = validate_questions(
             llm_result["questions"],
             expected_count=question_count,
+            include_answers=include_answers,
         )
 
         if not questions:
@@ -192,10 +195,10 @@ async def generate(
             source_type=source_type,
             difficulty=difficulty,
             question_count=question_count,
+            summary=llm_result["summary"] if include_summary else "",
             questions=questions,
             transcript=transcript,
             source_text=source_text,
-            summary=llm_result["summary"] if include_summary else "",
             audio_duration_sec=audio_duration,
             cost_total=cost_total,
         )
