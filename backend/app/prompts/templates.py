@@ -33,15 +33,9 @@ def build_prompt(
     tasks.append(f"{len(tasks) + 1}. Придумать {question_count} качественных вопросов.")
 
     # Поля JSON
-    answer_field = (
-        ',\n      "answer": "правильный ответ или массив"'
-        if include_answers
-        else ""
-    )
+    answer_field = ',\n      "answer": "правильный ответ или массив"' if include_answers else ""
     summary_field = (
-        '"summary": "конспект в 3-7 предложениях",'
-        if include_summary
-        else '"summary": "",'
+        '"summary": "конспект в 3-7 предложениях",' if include_summary else '"summary": "",'
     )
 
     system = f"""Ты — опытный методист, который создаёт учебные задания по материалу.

@@ -1,34 +1,32 @@
-import asyncio
 import logging
 from pathlib import Path
 
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-
-from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from bot.states import GenerateFlow
-from bot.keyboards import (
-    main_menu,
-    difficulty_keyboard,
-    count_keyboard,
-    options_keyboard,
-    confirm_keyboard,
-    after_result_keyboard,
-    cancel_keyboard,
-)
 from bot.api_client import (
+    export_result,
     generate_from_file,
     generate_from_text,
-    export_result,
 )
+from bot.keyboards import (
+    after_result_keyboard,
+    cancel_keyboard,
+    confirm_keyboard,
+    count_keyboard,
+    difficulty_keyboard,
+    main_menu,
+    options_keyboard,
+)
+from bot.states import GenerateFlow
 from bot.utils import (
     DIFFICULTY_LABELS,
-    format_summary,
-    format_questions_only,
     format_answers_only,
+    format_questions_only,
+    format_summary,
     humanize_error,
     split_message,
 )
@@ -77,6 +75,7 @@ UNKNOWN_TEXT = (
 
 # ─── Команды ───────────────────────────────────────────────
 
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -119,6 +118,7 @@ async def restart(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Кнопки-подсказки ──────────────────────────────────────
 
+
 @router.message(F.text == "📹 Загрузить видео")
 async def prompt_video(message: Message, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_source)
@@ -143,6 +143,7 @@ async def prompt_help(message: Message) -> None:
 
 
 # ─── Приём материала ───────────────────────────────────────
+
 
 @router.message(GenerateFlow.waiting_for_source, F.video)
 @router.message(GenerateFlow.waiting_for_source, F.document)
@@ -169,8 +170,7 @@ async def handle_file(message: Message, state: FSMContext) -> None:
     )
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
-        f"📎 Получил: {filename} ({size_mb:.1f} МБ)\n\n"
-        "Выбери сложность:",
+        f"📎 Получил: {filename} ({size_mb:.1f} МБ)\n\nВыбери сложность:",
         reply_markup=difficulty_keyboard(),
     )
 
@@ -191,8 +191,7 @@ async def handle_text(message: Message, state: FSMContext) -> None:
     await state.update_data(text=text, source_type="text_input")
     await state.set_state(GenerateFlow.waiting_for_difficulty)
     await message.answer(
-        f"📝 Получил текст ({len(text)} символов)\n\n"
-        "Выбери сложность:",
+        f"📝 Получил текст ({len(text)} символов)\n\nВыбери сложность:",
         reply_markup=difficulty_keyboard(),
     )
 
@@ -204,20 +203,21 @@ async def unknown_message(message: Message) -> None:
 
 # ─── Сложность ─────────────────────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_difficulty, F.data.startswith("diff:"))
 async def handle_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     difficulty = callback.data.split(":")[1]
     await state.update_data(difficulty=difficulty)
     await state.set_state(GenerateFlow.waiting_for_count)
     await callback.message.edit_text(
-        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\n"
-        "Сколько вопросов сгенерировать?",
+        f"Сложность: {DIFFICULTY_LABELS[difficulty]}\n\nСколько вопросов сгенерировать?",
         reply_markup=count_keyboard(),
     )
     await callback.answer()
 
 
 # ─── Количество ────────────────────────────────────────────
+
 
 @router.callback_query(GenerateFlow.waiting_for_count, F.data.startswith("count:"))
 async def handle_count(callback: CallbackQuery, state: FSMContext) -> None:
@@ -231,14 +231,14 @@ async def handle_count(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await state.set_state(GenerateFlow.waiting_for_options)
     await callback.message.edit_text(
-        "⚙️ Настройки результата\n\n"
-        "Нажми на опции, чтобы изменить.",
+        "⚙️ Настройки результата\n\nНажми на опции, чтобы изменить.",
         reply_markup=options_keyboard(True, True, "chat", "md"),
     )
     await callback.answer()
 
 
 # ─── Опции ─────────────────────────────────────────────────
+
 
 async def _refresh_options(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
@@ -341,6 +341,7 @@ def _confirmation_text(data: dict) -> str:
 
 # ─── Редактирование ────────────────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "edit:difficulty")
 async def edit_difficulty(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GenerateFlow.waiting_for_difficulty)
@@ -379,20 +380,12 @@ async def edit_options(callback: CallbackQuery, state: FSMContext) -> None:
 
 # ─── Запуск ────────────────────────────────────────────────
 
+
 @router.callback_query(GenerateFlow.waiting_for_confirmation, F.data == "confirm")
 async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     data = await state.get_data()
     await state.set_state(GenerateFlow.processing)
-
-    try:
-        progress_msg = await callback.message.edit_text(
-            "⏳ Обрабатываю материал...\n\n"
-        )
-    except Exception:
-        progress_msg = callback.message
-
-    progress_task = asyncio.create_task(_update_progress(progress_msg))
 
     try:
         include_summary = data.get("include_summary", True)
@@ -448,6 +441,7 @@ async def handle_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ─── Результат ─────────────────────────────────────────────
+
 
 async def send_result(message: Message, result: dict, data: dict) -> None:
     result_id = result.get("id", "")

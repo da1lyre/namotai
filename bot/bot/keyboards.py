@@ -1,8 +1,8 @@
 from aiogram.types import (
-    InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardMarkup,
+    InlineKeyboardMarkup,
     KeyboardButton,
+    ReplyKeyboardMarkup,
 )
 
 
@@ -79,23 +79,29 @@ def options_keyboard(
     ]
 
     if delivery == "file":
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{md_mark} MD",
-                callback_data="opt:format:md",
-            ),
-            InlineKeyboardButton(
-                text=f"{pdf_mark} PDF",
-                callback_data="opt:format:pdf",
-            ),
-        ])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{md_mark} MD",
+                    callback_data="opt:format:md",
+                ),
+                InlineKeyboardButton(
+                    text=f"{pdf_mark} PDF",
+                    callback_data="opt:format:pdf",
+                ),
+            ]
+        )
 
-    rows.append([
-        InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
-    ])
+    rows.append(
+        [
+            InlineKeyboardButton(text="▶️ Запустить", callback_data="opt:start"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel"),
+        ]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

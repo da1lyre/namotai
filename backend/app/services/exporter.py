@@ -59,10 +59,13 @@ def export_pdf(result: dict) -> bytes:
         cmd = [
             "pandoc",
             str(md_path),
-            "-o", str(pdf_path),
+            "-o",
+            str(pdf_path),
             "--pdf-engine=typst",
-            "-V", "mainfont=DejaVu Sans",
-            "-V", "lang=ru",
+            "-V",
+            "mainfont=DejaVu Sans",
+            "-V",
+            "lang=ru",
         ]
 
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)

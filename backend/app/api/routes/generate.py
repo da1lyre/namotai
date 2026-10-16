@@ -87,9 +87,7 @@ async def generate(
 
             duration = await get_duration(file_path)
             if duration > MAX_VIDEO_DURATION_SEC:
-                raise ValidationError(
-                    f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов"
-                )
+                raise ValidationError(f"Видео длиннее {MAX_VIDEO_DURATION_SEC // 3600} часов")
             audio_duration = int(duration)
 
             # Извлечь аудио
@@ -138,13 +136,9 @@ async def generate(
             if not source_text:
                 raise ValidationError("Пустой текст")
             if len(source_text) < MIN_TEXT_LENGTH:
-                raise ValidationError(
-                    f"Текст короче {MIN_TEXT_LENGTH} символов"
-                )
+                raise ValidationError(f"Текст короче {MIN_TEXT_LENGTH} символов")
             if len(source_text) > MAX_TEXT_LENGTH:
-                raise ValidationError(
-                    f"Текст длиннее {MAX_TEXT_LENGTH} символов"
-                )
+                raise ValidationError(f"Текст длиннее {MAX_TEXT_LENGTH} символов")
 
         # ─── Генерация конспекта и вопросов через LLM ───────
         source_content = transcript["text"] if source_type == "video" else source_text
@@ -171,9 +165,7 @@ async def generate(
             raise ValidationError("LLM не смог сгенерировать вопросы")
 
         # ─── Стоимость ──────────────────────────────────────
-        cost_whisper = (
-            calculate_whisper_cost(audio_duration) if audio_duration else Decimal("0")
-        )
+        cost_whisper = calculate_whisper_cost(audio_duration) if audio_duration else Decimal("0")
         cost_llm = calculate_llm_cost(
             llm_result["tokens_input"],
             llm_result["tokens_output"],

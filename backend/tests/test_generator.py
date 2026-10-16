@@ -1,9 +1,6 @@
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
 
-import pytest
-
-from app.services.generator import calculate_llm_cost, generate_questions
+from app.services.generator import calculate_llm_cost
 
 
 def test_calculate_llm_cost():
